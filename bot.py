@@ -43,10 +43,7 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await show_queue(update)
 
-    elif text == "取消":
-        global queue
-        queue = [x for x in queue if x["id"] != user.id]
-        save_queue()
+    queue[:] = [x for x in queue if x["id"] != user.id]
 
         await update.message.reply_text(
             f"✅ {name} 已取消排队"

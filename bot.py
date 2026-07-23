@@ -1,19 +1,30 @@
 import os
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 DATA_FILE = "queue.json"
 
+queue = []
+
 
 def load_queue():
+    global queue
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            queue = json.load(f)
     except:
-        return []
+        queue = []
 
 
 def save_queue():
@@ -21,7 +32,20 @@ def save_queue():
         json.dump(queue, f, ensure_ascii=False)
 
 
-queue = load_queue()
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, format, *args):
+        return
+
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
 
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,10 +97,7 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user.id
         )
 
-        if member.status in [
-            "administrator",
-            "creator"
-        ]:
+        if member.status in ["administrator", "creator"]:
             queue.clear()
             save_queue()
 
@@ -93,26 +114,35 @@ async def show_queue(update):
         )
         return
 
-
     text = "📋 当前排队：\n\n"
 
     for i, u in enumerate(queue, 1):
         text += f"{i}. {u['name']}\n"
 
-
     await update.message.reply_text(text)
 
 
 
-app = Application.builder().token(TOKEN).build()
+def main():
 
+    load_queue()
 
-app.add_handler(
-    MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        message
+    threading.Thread(
+        target=run_web,
+        daemon=True
+    ).start()
+
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            message
+        )
     )
-)
+
+    app.run_polling()
 
 
-app.run_polling()
+if __name__ == "__main__":
+    main()
